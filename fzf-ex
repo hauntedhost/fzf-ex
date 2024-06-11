@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+#
+# Fuzzy search all Elixir modules for the project in current folder
+# Requires: fzf and bat
+#
+# Usage: fzf-ex
+#
+
+config_dir="$HOME/.config/fzf-ex"
+current_dir=$(pwd)
+editor="${EDITOR:-code}"
+max_index_age_hours=24
+modules_dir="$config_dir$current_dir"
+modules_index="$modules_dir/modules.index"
+
+if ! command -v fzf &> /dev/null; then
+  echo "[error] Required fzf is not installed, see: https://github.com/junegunn/fzf"
+  exit 1
+fi
+
+if ! command -v bat &> /dev/null; then
+  echo "[error] Required bat is not installed, see: https://github.com/sharkdp/bat"
+  exit 1
+fi
+
+if [[ ! -f 'mix.exs' ]]; then
+  echo "[error] Missing mix.exs, ensure you're in the root of an Elixir Mix project"
+  exit 1
+fi
+
+# Check if current project modules.index exists
+if [[ ! -f $modules_index ]]; then
+  echo "[info] Modules index not found for the current project, generating:"
+  fzf-ex-index
+  if [[ $? -ne 0 ]]; then
+    echo "[error] Failed to generate modules index"
+    exit 1
+  fi
+fi
+
+# Prompt to regenerate stale index
+file_age_seconds=$(($(date +%s) - $(stat -f %m "$modules_index")))
+file_age_minutes=$(( (file_age_seconds % 3600) / 60 ))
+file_age_hours=$((file_age_seconds / 3600))
+
+if [[ $file_age_hours -gt 0 ]]; then
+  echo "[info] Modules last indexed ${file_age_hours} hours ago"
+else
+  echo "[info] Modules last indexed ${file_age_minutes} minutes ago"
+fi
+
+if [[ $file_age_hours -gt $max_index_age_hours ]]; then
+  read -p "[warning] Modules index is older than $max_index_age_hours hours. Reindex? (y/n) " -n 1 -r
+  echo ""
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    echo "[info] Reindexing:"
+    fzf-ex-index
+    if [[ $? -ne 0 ]]; then
+      echo "[error] Failed to regenerate modules index"
+      exit 1
+    fi
+  fi
+fi
+
+# Get modules index for fzf
+modules=$(cat "$modules_index")
+
+selected=$(
+  echo "$modules" | \
+  fzf \
+    --ansi \
+    --delimiter='\t' \
+    --no-scrollbar \
+    --preview '{
+      grey="\033[90m"
+      reset="\033[0m"
+      filename=$(echo {2} | tr -d "''" | sed "s|$PWD\/||g")
+      echo -n "${grey}${filename}${reset}\n\n" && \
+      bat \
+        --color=always \
+        --highlight-line {3} \
+        --style=numbers \
+        --theme="Monokai Extended" \
+        {2}
+      }' \
+    --preview-window 'up,+{3},~2' \
+    --with-nth=1
+)
+
+# Exit if nothing was selected
+if [[ -z $selected ]]; then
+  exit 0
+fi
+
+# Extract path and line number
+path=$(echo "$selected" | awk -F'\t' '{print $2}')
+line=$(echo "$selected" | awk -F'\t' '{print $3}')
+
+# Exit if problems with path or line
+if [[ -z "$path" || -z "$line" ]]; then
+  echo "[error] Problem parsing module path and line number"
+  exit 1
+fi
+
+# Helper to open module with user $EDITOR
+open_file_at_line() {
+  local path="$1"
+  local line="$2"
+  case "$editor" in
+    code)
+      open "vscode://file/$path:$line"
+      ;;
+    nvim)
+      nvim +"$line" "$path"
+      ;;
+    vim)
+      vim +"$line" "$path"
+      ;;
+    zed)
+      zed "$path:$line"
+      ;;
+    *)
+      echo "[error] Unknown editor: '$editor'"
+      return 1
+      ;;
+  esac
+}
+
+# Open file at specified line
+open_file_at_line "$path" "$line"

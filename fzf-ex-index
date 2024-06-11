@@ -1,0 +1,82 @@
+#!/usr/bin/env elixir
+#
+# Generate a per-project modules.index file, stored in ~/.config/fzf-ex/{project-path}.
+
+# This is a plaintext, tab delimited file listing all module names in lib/**/*.ex, including nested modules, along with
+# file paths and line numbers:
+#
+#     MyApp.Foo        /Users/jules/code/my_app/lib/foo.ex    1
+#     MyApp.Foo.Bar    /Users/jules/code/my_app/lib/foo.ex    10
+#     MyApp.Baz        /Users/jules/code/my_app/lib/baz.ex    1
+#
+
+Mix.install([:jason])
+
+defmodule BuildModulesIndex do
+  def run do
+    project_root = File.cwd!()
+    lib_path = Path.join([project_root, "lib"])
+
+    # Ensure config index path exists
+    config_dir = Path.expand("~/.config/fzf-ex")
+    index_dir = Path.join(config_dir, project_root)
+    index_file = Path.join(index_dir, "modules.index")
+    File.mkdir_p!(index_dir)
+
+    unless File.exists?(lib_path) do
+      IO.puts("[error] Missing lib folder in the current project root")
+      System.halt(1)
+    end
+
+    # Parse files and generate index
+    IO.puts("[info] 🚀 Generating modules.index ...")
+
+    project_files = get_elixir_files(lib_path)
+    modules = Enum.map(project_files, &extract_modules/1)
+
+    modules_with_paths = Enum.flat_map(modules, fn {path, modules} ->
+      Enum.map(modules, &({&1, path}))
+    end)
+
+    modules_index = Enum.map(modules_with_paths, fn {module, path} ->
+      "#{module.name}\t#{path}\t#{module.line}\n"
+    end)
+
+    # Write index
+    File.write!(index_file, modules_index)
+    IO.puts("[info] 🎉 Done! Saved to: #{index_file}")
+  end
+
+  defp get_elixir_files(lib_path) do
+    lib_path
+    |> Path.join("**/*.ex")
+    |> Path.wildcard()
+  end
+
+  defp extract_modules(file) do
+    file_content = File.read!(file)
+    {:ok, quoted_forms} = Code.string_to_quoted(file_content)
+    modules = extract_module_names(quoted_forms, [])
+    {file, modules}
+  end
+
+  defp extract_module_names({:defmodule, meta, [{:__aliases__, _, module}, [do: do_block]]}, context) do
+    new_context = context ++ module
+    module_name = Enum.join(new_context, ".")
+    nested_modules = extract_module_names(do_block, new_context)
+    [%{name: module_name, line: Keyword.fetch!(meta, :line)} | nested_modules]
+  end
+
+  defp extract_module_names({:__block__, _, forms}, context) when is_list(forms) do
+    Enum.reduce(forms, [], fn form, acc ->
+      case extract_module_names(form, context) do
+        [] -> acc
+        nested -> acc ++ nested
+      end
+    end)
+  end
+
+  defp extract_module_names(_, _), do: []
+end
+
+BuildModulesIndex.run()
