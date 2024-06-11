@@ -1,4 +1,8 @@
+# fzf-ex
+
 fzf-ex is a command-line fuzzy finder for all module names in an Elixir Mix project. It's powered by [fzf](https://github.com/junegunn/fzf) and [bat](https://github.com/sharkdp/bat).
+
+![screenshot](https://github.com/hauntedhost/fzf-ex/assets/81008/64923ecb-b343-4c97-ac53-0f9eb2a6b10b)
 
 https://github.com/hauntedhost/fzf-ex/assets/81008/b7611b23-9998-4ef2-be00-2023074c9056
 
