@@ -38,27 +38,23 @@ if [[ ! -f $modules_index ]]; then
   fi
 fi
 
-# Prompt to regenerate stale index
+# Regenerate stale index
 file_age_seconds=$(($(date +%s) - $(stat -f %m "$modules_index")))
 file_age_minutes=$(( (file_age_seconds % 3600) / 60 ))
 file_age_hours=$((file_age_seconds / 3600))
 
 if [[ $file_age_hours -gt 0 ]]; then
-  echo "[info] Modules last indexed ${file_age_hours} hours ago"
+  echo "[info] Modules last indexed ${file_age_hours} hour(s) ago"
 else
-  echo "[info] Modules last indexed ${file_age_minutes} minutes ago"
+  echo "[info] Modules last indexed ${file_age_minutes} minute(s) ago"
 fi
 
 if [[ $file_age_hours -gt $max_index_age_hours ]]; then
-  read -p "[warning] Modules index is older than $max_index_age_hours hours. Reindex? (y/n) " -n 1 -r
-  echo ""
-  if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo "[info] Reindexing:"
-    fzf-ex-index
-    if [[ $? -ne 0 ]]; then
-      echo "[error] Failed to regenerate modules index"
-      exit 1
-    fi
+  echo "[info] Modules index is older than $max_index_age_hours hours. Reindexing ..."
+  fzf-ex-index
+  if [[ $? -ne 0 ]]; then
+    echo "[error] Failed to regenerate modules index"
+    exit 1
   fi
 fi
 
